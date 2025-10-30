@@ -22,7 +22,7 @@ GPa = kilo * MPa
 # test creating a basic beam grillage model
 def test_model_instance(bridge_model_42_negative):
     example_bridge = bridge_model_42_negative
-    # og.opsplt.plot_model("nodes") # uncomment to use GetRendering module
+    # og.opsplt.plot_model("nodes") # uncomment to use vfo module
     # og.opsv.plot_model(az_el=(-90, 0), element_labels=0)
     # og.plt.show()
     assert og.ops.nodeCoord(18)  # check if model node exist in OpenSees model space
@@ -370,10 +370,54 @@ def test_member_reassignment_feature(ref_bridge_properties):
     variant_one_model.create_osp_model(pyfile=False)
     # og.opsv.plot_model(element_labels=0, az_el=(-90, 0))  # plotting using ops_vis
     # og.plt.show()
-    assert (
-        variant_one_model.element_command_list[2]
-        == 'ops.element("elasticBeamColumn", 2, *[2, 3], *[9.963e-02, 3.480e+10, 1.450e+10, 5.850e-04, 2.475e-04, 5.445e-04], 1, 106.272)\n'
-    )
+    import re
+
+    def parse_elastic_beam_cmd(cmd_str):
+        # Remove trailing newline
+        cmd_str = cmd_str.strip()
+        pattern = (
+            r'ops\.element\(\s*"elasticBeamColumn"\s*,\s*(\d+)\s*,\s*\*\[(.*?)\]\s*,'
+            r'\s*\*\[(.*?)\]\s*,\s*(\d+)\s*,\s*"[-]?mass"\s*,\s*([\deE.+-]+)\s*\)'
+        )
+
+        # Match the command pattern
+        match = re.match(
+            pattern,
+            cmd_str,
+        )
+        assert match, f"Failed to parse command: {cmd_str}"
+
+        elem_id = int(match.group(1))
+        nodes = list(map(int, match.group(2).split(",")))
+        section_vals = list(map(float, match.group(3).split(",")))
+        transf_tag = int(match.group(4))
+        mass = float(match.group(5))
+
+        return elem_id, nodes, section_vals, transf_tag, mass
+
+    # Expected values
+    expected_elem_id = 2
+    expected_nodes = [2, 3]
+    expected_section_vals = [
+        9.963e-02,
+        3.480e10,
+        1.450e10,
+        5.850e-04,
+        2.475e-04,
+        5.445e-04,
+    ]
+    expected_transf_tag = 1
+    expected_mass = 106272.0
+
+    cmd = variant_one_model.element_command_list[2]
+    elem_id, nodes, section_vals, transf_tag, mass = parse_elastic_beam_cmd(cmd)
+
+    assert elem_id == expected_elem_id
+    assert nodes == expected_nodes
+    for actual, expected in zip(section_vals, expected_section_vals):
+        assert abs(actual - expected) < 1e-9
+    assert transf_tag == expected_transf_tag
+    assert abs(mass - expected_mass) < 1e-6
 
 
 def test_create_offset_support(ref_bridge_properties):

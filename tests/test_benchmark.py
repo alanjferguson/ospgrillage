@@ -849,11 +849,14 @@ def test_line_load_results(add_analysis_to_simple_grid):
         "3_Line_Test_Case.csv",
     ]
     print(Path.cwd())
-    point_load_disp_lusas = pandas.read_csv(Path.cwd().joinpath(*point_lusas_disp_path))
+    print(Path(__file__))
+    point_load_disp_lusas = pandas.read_csv(
+        Path(__file__).resolve().parent.parent.joinpath(*point_lusas_disp_path)
+    )
     # get ospg point load case
     point_load_disp_ospg = all_results["displacements"].sel(
         Loadcase="Points Test (Global)",
-        Component=["dx", "dy", "dz", "theta_x", "theta_y", "theta_z"],
+        Component=["x", "y", "z", "theta_x", "theta_y", "theta_z"],
     )
 
     # lusas elements are 3 noded beam elemnt, this function extracts only the end nodes (first and third) of the model.
@@ -863,23 +866,27 @@ def test_line_load_results(add_analysis_to_simple_grid):
     )
     sorted_zip_ospg_node = sort_array_by_node_mapping(
         list_of_node=node_ospg,
-        data_of_node=point_load_disp_ospg.sel(Component="dy").values,
+        data_of_node=point_load_disp_ospg.sel(Component="y").values,
     )
 
-    line_load_disp_lusas = pandas.read_csv(Path.cwd().joinpath(*line_lusas_disp_path))
+    line_load_disp_lusas = pandas.read_csv(
+        Path(__file__).resolve().parent.parent.joinpath(*line_lusas_disp_path)
+    )
     lusas_def = reduce_lusas_node_result(
         pd_data=line_load_disp_lusas["DZ[m]"], node_to_extract_list=node_lusas
     )
     line_load_disp_ospg = all_results["displacements"].sel(
         Loadcase="Line Test",
-        Component=["dx", "dy", "dz", "theta_x", "theta_y", "theta_z"],
+        Component=["x", "y", "z", "theta_x", "theta_y", "theta_z"],
     )
     sorted_zip_ospg_node = sort_array_by_node_mapping(
         list_of_node=node_ospg,
-        data_of_node=line_load_disp_ospg.sel(Component="dy").values,
+        data_of_node=line_load_disp_ospg.sel(Component="y").values,
     )
     # lusas bending z
-    line_load_force_lusas = pandas.read_csv(Path.cwd().joinpath(*line_lusas_force_path))
+    line_load_force_lusas = pandas.read_csv(
+        Path(__file__).resolve().parent.parent.joinpath(*line_lusas_force_path)
+    )
     single_component_line_lusas = extract_lusas_ele_forces(
         list_of_ele=a, df_force=line_load_force_lusas, component="My[N.m]"
     )

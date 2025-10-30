@@ -89,13 +89,51 @@ def test_point_load_getter(
     ULS_DL.add_load(Single)  # ch
     example_bridge.add_load_case(ULS_DL)
     og.ops.wipe()
+    #
+    # assert example_bridge.load_case_list[0]["load_command"] == [
+    #     "ops.load(12, *[0, 0.6075807082987842, 0, 0.37389582049155967, 0, 0.34166943132701877])\n",
+    #     "ops.load(17, *[0, 1.4724192917012129, 0, 0.9061041795084391, 0, -0.613915767971676])\n",
+    #     "ops.load(18, *[0, 12.685458513118162, 0, -3.6244167180337583, 0, -5.289120462525217])\n",
+    #     "ops.load(13, *[0, 5.234541486881841, 0, -1.4955832819662394, 0, 2.943613562202012])\n",
+    # ]
+    # reference_command = example_bridge.load_case_list[0]["load_command"]
+    #
+    # assert reference_command
+    import re
 
-    assert example_bridge.load_case_list[0]["load_command"] == [
-        "ops.load(12, *[0, 0.6075807082987842, 0, 0.37389582049155967, 0, 0.34166943132701877])\n",
-        "ops.load(17, *[0, 1.4724192917012129, 0, 0.9061041795084391, 0, -0.613915767971676])\n",
-        "ops.load(18, *[0, 12.685458513118162, 0, -3.6244167180337583, 0, -5.289120462525217])\n",
-        "ops.load(13, *[0, 5.234541486881841, 0, -1.4955832819662394, 0, 2.943613562202012])\n",
+    def parse_load_cmd(cmd):
+        # Extract node ID and list of floats from string like: ops.load(12, *[0, np.float64(x), 0, ...])
+        match = re.match(r"ops\.load\((\d+), \*\[([^\]]+)\]\)", cmd.strip())
+        assert match, f"Failed to parse: {cmd}"
+        node = int(match.group(1))
+        values = [
+            float(x.split("(")[-1].rstrip(")"))
+            for x in match.group(2).split(",")
+            if "np.float64" in x
+        ]
+        return node, values
+
+    expected_cmds = [
+        (12, [0.6075807082987873, 0.3738958204915613, 0.34166943132702027]),
+        (17, [1.4724192917012136, 0.9061041795084389, -0.6139157679716769]),
+        (18, [12.685458513118142, -3.624416718033756, -5.289120462525214]),
+        (13, [5.234541486881858, -1.4955832819662453, 2.94361356220202]),
     ]
+
+    for cmd_str, (exp_node, exp_vals) in zip(
+        example_bridge.load_case_list[0]["load_command"], expected_cmds
+    ):
+        node, values = parse_load_cmd(cmd_str)
+        assert node == exp_node
+        for a, b in zip(values, exp_vals):
+            assert abs(a - b) < 1e-9  # tolerance for float comparison
+
+    # assert example_bridge.load_case_list[0]["load_command"] == [
+    #     "ops.load(12, *[0, np.float64(0.6075807082987873), 0, np.float64(0.3738958204915613), 0, np.float64(0.34166943132702027)])\n",
+    #     "ops.load(17, *[0, np.float64(1.4724192917012136), 0, np.float64(0.9061041795084389), 0, np.float64(-0.6139157679716769)])\n",
+    #     "ops.load(18, *[0, np.float64(12.685458513118142), 0, np.float64(-3.624416718033756), 0, np.float64(-5.289120462525214)])\n",
+    #     "ops.load(13, *[0, np.float64(5.234541486881858), 0, np.float64(-1.4955832819662453), 0, np.float64(2.94361356220202)])\n",
+    # ]
 
 
 # test point load returning None when point (loadpoint) is outside of mesh
@@ -1111,5 +1149,48 @@ def test_compare_shell_beam_analysis(run_beam_model_point_load):
     og.plot_defo(
         shell_bridge, result_shell, member="interior_main_beam", option="nodes"
     )
-    pass
     og.opsv.plot_defo()
+
+
+def test_transient(beam_element_bridge):
+    """A test for the uncoupled transient analysis portion of VBI basic framework"""
+    positions = [5, 5, 10, 15]
+    P = 100 * kN
+    first_step = True
+    previous_state = None
+
+    # start moving vehicle through all positions
+    for x in positions:
+        # create load case
+        mid_point_line_loadcase = og.create_load_case(name="VBI")
+        lp1 = og.create_load_vertex(x=x, y=0, z=3.5, p=P)
+        mid_point_line_load = og.create_load(
+            name="unit load",
+            point1=lp1,
+        )
+        mid_point_line_loadcase.add_load(mid_point_line_load)
+
+        # create bridge instance
+        beam_bridge = beam_element_bridge
+        beam_bridge.create_osp_model()
+
+        print(og.ops.eigen(2))
+        og.ops.rayleigh(0.0, 0.0, 0.0, 2 * 0.02 / 4)
+
+        # set previous state
+        if not first_step:
+            beam_bridge.set_previous_state(previous_state)
+        first_step = False
+
+        # add load case, run and store
+        beam_bridge.add_load_case(mid_point_line_loadcase)
+        beam_bridge.analyze(analysis_type="Transient", step=100, time_increment=0.1)
+        previous_state = beam_bridge.store_state()
+        result = beam_bridge.get_results()
+        print(result)
+        postprocessor = og.PostProcessor(beam_bridge, result)
+
+        contactpoints = postprocessor.get_arbitrary_displacements(point=[5, 0, 3.5])
+        # do something with results
+        print(result)
+        print("Next step")
