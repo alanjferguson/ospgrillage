@@ -2949,7 +2949,9 @@ class Results:
     def compile_data_array(self, local_force_option=True, main_ele_tags=None):
         # Function called to compile analysis results into xarray
         # Coordinates of dimension
-        node = list(self.mesh_obj.node_spec.keys())  # for Node
+        # Get actual recorded node tags from first load case instead of all mesh nodes
+        # This fixes dimension mismatch between recorded data and coordinate arrays
+        node = None  # Will be set from actual recorded data
         ele = list(ops.getEleTags())
 
         # Sort data for dataArrays
@@ -2974,6 +2976,9 @@ class Results:
 
         # loop all basic load case
         for load_case_name, resp_list_of_2_dict in basic_dict.items():
+            # Extract node tags from first load case if not yet extracted
+            if node is None:
+                node = list(resp_list_of_2_dict[0].keys())
             # extract displacement
             basic_node_disp_list.append(
                 [a for a in list(resp_list_of_2_dict[0].values())]
@@ -3023,6 +3028,9 @@ class Results:
                 increment_load_case_name,
                 inc_resp_list_of_2_dict,
             ) in moving_load_case_inc_dict.items():
+                # Extract node tags from first increment if not yet extracted
+                if node is None:
+                    node = list(inc_resp_list_of_2_dict[0].keys())
                 # basic_array_list.append([a + b for (a, b) in zip(list(inc_resp_list_of_2_dict[0].values()),
                 #                                                       list(inc_resp_list_of_2_dict[1].values()))])
                 basic_node_disp_list.append(
@@ -3074,6 +3082,11 @@ class Results:
                     ele_nodes_list = list(inc_resp_list_of_2_dict[4].values())
                     ele_tag = list(inc_resp_list_of_2_dict[4].keys())
                     extracted_ele_nodes_list = True
+
+        # Fallback: if no load cases were found, use all mesh nodes
+        if node is None:
+            node = list(self.mesh_obj.node_spec.keys())
+
         # convert to np array format
         basic_array_disp = np.array(basic_node_disp_list, dtype=object)
         basic_array_vel = np.array(basic_node_vel_list, dtype=object)
